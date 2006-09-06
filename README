@@ -1,0 +1,16 @@
+This evals the attributd sub, and checks for an 
+eval on the stack if it dies. If there is one 
+then the exception is propagated via "die $@";
+if not then cluck is used to dump a stack trace
+and the error message.
+
+This is useful for sub's that know they throw what
+should be non-fatal exceptions or for calls inside
+of long-running processes that need to decide quickly
+if they have been called properly. It can also be 
+useful for modules that use modules that use Fatal,
+which can lead to the code issuing exceptions that
+aren't explicit in the code.
+
+This is generally more useful in testing than production,
+but can also be useful for tracking down failures.

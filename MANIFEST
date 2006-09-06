@@ -1,0 +1,10 @@
+t/00-depend.t
+t/10-in-eval.t
+t/01-module.t
+t/11-return-type.t
+lib/Sub/ForceEval.pm
+Makefile.PL
+README
+MANIFEST
+Changes
+META.yml                                 Module meta-data (added by MakeMaker)
