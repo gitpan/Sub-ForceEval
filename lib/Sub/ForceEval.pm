@@ -15,16 +15,13 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.0.3' );
+our $VERSION = qv( '0.0.4' );
 
 use Attribute::Handlers;
 
 ########################################################################
 # package variables
 ########################################################################
-
-# max stack depth possible in Perl. this is the upper limit for
-# caller $x to check for an "(eval" on the stack.
 
 ########################################################################
 # public sub's
@@ -37,54 +34,60 @@ use Attribute::Handlers;
 # undef &$ref avoids redefinied sub warnings by wiping out the original
 # before installing the wrapper. with Symbol this allows warnings to
 # be left on throughout the code.
+#
+# Note: assigning *__ANON__ gives this anonymous sub if we 
+# have to report any errors.
 
 sub UNIVERSAL::ForceEval :ATTR(CODE)
 {
   my ( undef, $install, $wrapped ) = @_;
 
-  my $name  = join '::', *{$install}{PACKAGE}, *{$install}{NAME}; 
+  my $name  = join '::', *{$install}{PACKAGE}, *{$install}{NAME};
 
   no warnings 'redefine';
 
   *$install
-   = sub
+  = sub
   {
-    my $array = wantarray;
-
-    my $reply 
-    = $array 
-    ? [ eval { &$wrapped } ]
-    :   eval { &$wrapped }
+    wantarray
+    ? my @reply = eval { &$wrapped }
+    : my $reply = eval { &$wrapped }
     ;
 
-    if( @$ )
+    if( $@ )
     {
-      # check for an eval: if there is one then die
-      # to propagate the exception; otherwise hand
-      # back undef.
-      #
-      # it's up to the caller to handle undef returns.
-
       my $i = -1;
 
       while( my $caller = ( caller ++$i )[ 3 ] )
       {
+        # propagate the error to the next eval.
+
         die $@
         if $caller =~ m{ ^ \(eval\b }x;
       }
 
-      cluck "Missing eval for '$name'", $@;
+      # ran out of stack: cluck about it, with a legit
+      # name as the source.
 
-      return;
+      local *__ANON__ = $name;
+
+      my $exception
+      = ref $@                       ? 'exception object'
+      : $@ =~ m{(.*) at \S+ line .*} ? "'$1'"
+      :                                "'$@'"
+      ;
+
+      cluck "Missing eval for '$name' (died with: $exception) caught";
+
+      return
     }
     else
     {
-      # no need to worry about eval's without a die.
+      # no exception: just hand back the data;
 
-      $array ? @$reply : $reply
+      wantarray ? @reply : $reply
     }
   };
-
 }
 
 # keep require happy
@@ -96,10 +99,6 @@ __END__
 =head1 NAME
 
 Sub::ForceEval - runtime cluck if a dying subrutine is not eval-ed.
-
-=head1 VERSION
-
-This document describes Sub::ForceEval version 0.0.1
 
 =head1 SYNOPSIS
 
