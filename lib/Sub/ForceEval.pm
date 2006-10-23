@@ -1,5 +1,6 @@
 ########################################################################
-# check for eval on stack at runtime.
+# check for eval on stack at runtime;
+# die with optionally blessed exception.
 ########################################################################
 
 ########################################################################
@@ -10,12 +11,12 @@ package Sub::ForceEval;
 
 use strict;
 
-use Carp qw( carp cluck );
+use Carp qw( croak carp cluck );
 use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.0.4' );
+our $VERSION = qv( '0.1.0' );
 
 use Attribute::Handlers;
 
@@ -23,9 +24,54 @@ use Attribute::Handlers;
 # package variables
 ########################################################################
 
+my %blesserz = ();
+
+########################################################################
+# local utility subs
+########################################################################
+
+my $default_exception = sub { $@ };
+
+my $bless_exception
+= sub
+{
+    # bless $@ before re-throwing.
+
+    my $method = shift;
+
+    my ( $pack, $name )
+    = $method =~ m{^ ( .+ ) :: ( \w+ ) $}x
+    or croak "Bogus Sub::ForceEval: no package and method in '$method'";
+
+    eval "require $pack"
+    or croak "Bogus Sub::ForceEval: unable to find package '$pack'";
+
+    my $sub = $pack->can( $name )
+    or croak "Bogus Sub::ForceEval: '$pack' cannot '$name'";
+
+    sub { ref $@ ? $@ : $pack->$sub( $@ ) }
+};
+
 ########################################################################
 # public sub's
 ########################################################################
+
+########################################################################
+# caller can specify a method to pre-process $@ before
+# rethrowing -- probably a constructor for OO-$@ handling.
+
+sub import
+{
+    my $caller = caller;
+
+    my ( undef, $method ) = @_;
+
+    $blesserz{ $caller } 
+    = $method
+    ? $bless_exception->( $caller, $method )
+    : $default_exception
+    ;
+}
 
 ########################################################################
 # wrap the attributed sub so that it checks the current stack for an
@@ -40,9 +86,17 @@ use Attribute::Handlers;
 
 sub UNIVERSAL::ForceEval :ATTR(CODE)
 {
-  my ( undef, $install, $wrapped ) = @_;
+  my ( undef, $install, $wrapped, undef, $method ) = @_;
 
-  my $name  = join '::', *{$install}{PACKAGE}, *{$install}{NAME};
+  my $pkg   = *{$install}{PACKAGE};
+
+  my $name  = join '::', $pkg, *{$install}{NAME};
+
+  my $blesser
+  = $method
+  ? $bless_exception->( $method )
+  : $blesserz{ $pkg }
+  ;
 
   no warnings 'redefine';
 
@@ -56,30 +110,31 @@ sub UNIVERSAL::ForceEval :ATTR(CODE)
 
     if( $@ )
     {
-      my $i = -1;
+        my $i = -1;
 
-      while( my $caller = ( caller ++$i )[ 3 ] )
-      {
-        # propagate the error to the next eval.
+        while( my $caller = ( caller ++$i )[ 3 ] )
+        {
+            # re-throw the error if someone is out 
+            # there to get it.
 
-        die $@
-        if $caller =~ m{ ^ \(eval\b }x;
-      }
+            die $blesser->( $@ )
+            if $caller =~ m{ ^ \(eval\b }x;
+        }
 
-      # ran out of stack: cluck about it, with a legit
-      # name as the source.
+        # ran out of stack: cluck about it, with a legit
+        # name as the source.
 
-      local *__ANON__ = $name;
+        local *__ANON__ = $name;
 
-      my $exception
-      = ref $@                       ? 'exception object'
-      : $@ =~ m{(.*) at \S+ line .*} ? "'$1'"
-      :                                "'$@'"
-      ;
+        my $exception
+        = ref $@                       ? 'exception object'
+        : $@ =~ m{(.*) at \S+ line .*} ? "'$1'"
+        :                                "'$@'"
+        ;
 
-      cluck "Missing eval for '$name' (died with: $exception) caught";
+        cluck "Missing eval for '$name' (died with: $exception) caught";
 
-      return
+        return
     }
     else
     {
@@ -101,6 +156,8 @@ __END__
 Sub::ForceEval - runtime cluck if a dying subrutine is not eval-ed.
 
 =head1 SYNOPSIS
+  
+    # if you just want your death recorded:
 
     use Sub::ForceEval;
 
@@ -130,6 +187,30 @@ Sub::ForceEval - runtime cluck if a dying subrutine is not eval-ed.
     sub bar { foo() }
 
 
+    # or you may want an exceptional death.
+    #
+    # this can be helpful with higher-level code
+    # calls system service modules that have to 
+    # deal with non-exceptional die's internally.
+    # this way, anything that percolates above
+    # the service utilities will be a blessed
+    # exception.
+
+    package MyClass;
+
+    # use sets default constructor for any ForceEval in
+    # the class: if $@ is true then it will be blessed
+    # via $class->$method( $@ );
+
+    use Sub::ForceEval qw( My::Class::Default::constructor );
+
+    # individual sub's can override the class default
+    # (e.g., different classes of exception handlers
+    # can deal with different types of errors).
+
+    sub marine :ForceEval( 'Override::Default::new' );
+
+
 =head1 DESCRIPTION
 
 Subroutines that are marked with the ForceEval attribute 
@@ -148,7 +229,15 @@ ensure survival. It can also be handy for subs that call
 modules which use Fatal: all of the fatalities can be
 guaranteed to be gracefully handled.
 
+If exception objects are preferred to flat $@ values then
+a constructor can be provided with the use. This will
+be broken into class and method portions and called to 
+construct an object from the exception; individual subs
+can also provide a constructor. 
+
 =head1 INTERFACE
+
+=head2 Un-blessed exceptions (default)
 
 Use the module and add the C<:ForceEval> attribute to a 
 subroutine:
@@ -157,6 +246,41 @@ subroutine:
 
     sub foo :ForceEval { ...}
 
+=head2 Blessed exceptions (optional)
+
+=over 4
+
+=item Package default exception
+
+Passing a constructor to "use" will wrap all $@ via
+the constructor for subroutines in that package:
+
+    use Sub::ForceEval qw( Exceptional::Class::construct );
+
+This will be broken into $class of Exceptional::Class
+and method of "construct", which are then called as:
+    
+    die $class->$method( $@ );
+
+This is a per-package setting (i.e., using it in one 
+package does not affect other packages to use it with
+ForceEval).
+
+=item Subroutine-specific exception
+
+Passing a constructor to the ForceEval attribute will use
+that instead of any package default:
+
+    sub frobnicate :ForceEval qw( Exceptional::File::handler )
+    {
+        ...
+    }
+
+leaves $class and $method for the subroutine set to 
+"Exceptional::File" and "handler".
+
+
+=back
 
 =head1 DIAGNOSTICS
 
@@ -175,7 +299,6 @@ and keeps going.
 
 Sub::ForceEval requires no configuration files or environment
 variables.
-
 
 =head1 DEPENDENCIES
 
@@ -199,18 +322,18 @@ None reported.
 
 No bugs have been reported.
 
-This is nearly impossible to test since detecting that 
-the module incorrectly detected an existing eval requires
-running it in an eval...
+Some parts of this are impossible to test since detecting
+that the module incorrectly detected an existing eval requires
+running it in an eval.
 
 Please report any bugs or feature requests to
 C<bug-sub-ForceEval@rt.cpan.org>, or through the web interface at
 L<http://rt.cpan.org>.
 
-
 =head1 AUTHORS
 
 Steven Lembark <lembark@wrkhors.com>
+
 Damian Conway
 
 

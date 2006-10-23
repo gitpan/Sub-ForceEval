@@ -1,3 +1,13 @@
+- Mon Oct 23 11:16:51 EDT 2006
+
+POD, no code changes.
+
+- Thu Oct 19 00:41:33 EDT 2006
+
+Add method argument to use or attribute handler as 
+a way to automatically bless $@ for OO exception
+handling.
+
 - Tue Sep  5 14:09:24 EDT 2006
 
 Initial release
