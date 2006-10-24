@@ -1,3 +1,8 @@
+- Tue Oct 24 16:16:41 EDT 2006
+
+Check $@->isa( constructor's package ) to avoid
+wasted constructor calls.
+
 - Mon Oct 23 11:16:51 EDT 2006
 
 POD, no code changes.

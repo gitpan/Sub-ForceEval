@@ -16,7 +16,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.1.0' );
+our $VERSION = qv( '0.2.0' );
 
 use Attribute::Handlers;
 
@@ -29,6 +29,12 @@ my %blesserz = ();
 ########################################################################
 # local utility subs
 ########################################################################
+
+########################################################################
+# default is to simply localize $@ for the caller.
+# otherwise, sanity chech $@ for already being some
+# class compatable with the requested package and 
+# bless it if necesssary.
 
 my $default_exception = sub { $@ };
 
@@ -49,7 +55,12 @@ my $bless_exception
     my $sub = $pack->can( $name )
     or croak "Bogus Sub::ForceEval: '$pack' cannot '$name'";
 
-    sub { ref $@ ? $@ : $pack->$sub( $@ ) }
+    sub
+    {
+      ref $@ && $@->isa( $pack )
+      ? $@
+      : $pack->$sub( $@ )
+    }
 };
 
 ########################################################################
@@ -91,6 +102,9 @@ sub UNIVERSAL::ForceEval :ATTR(CODE)
   my $pkg   = *{$install}{PACKAGE};
 
   my $name  = join '::', $pkg, *{$install}{NAME};
+
+  # use the caller's method if requested, otherwise
+  # take the package's default (which may be $default_blesser).
 
   my $blesser
   = $method
