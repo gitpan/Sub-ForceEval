@@ -1,3 +1,7 @@
+- Thu Oct 26 18:30:45 EDT 2006
+
+Add test for exception wrappers.
+
 - Tue Oct 24 16:16:41 EDT 2006
 
 Check $@->isa( constructor's package ) to avoid

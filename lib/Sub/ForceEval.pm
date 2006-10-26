@@ -45,13 +45,9 @@ my $bless_exception
 
     my ( $method ) = @_;
 
-    print STDERT "\nBreaking up method: '$method'\n";
-
     my ( $pack, $name )
     = $method =~ m{^ ( .+ ) :: ( \w+ ) $}x
     or die "Bogus Sub::ForceEval: no package and method in '$method'";
-
-    print STDERT "\nFound: '$pack', '$name'\n";
 
     my $sub = $pack->can( $name )
     or croak "Bogus Sub::ForceEval: '$pack' cannot '$name'";
@@ -101,8 +97,6 @@ sub import
 sub UNIVERSAL::ForceEval :ATTR(CODE)
 {
   my ( undef, $install, $wrapped, undef, $method ) = @_;
-
-  print STDERR "\nWrapping with method: '$method'\n";
 
   my $pkg   = *{$install}{PACKAGE};
 
