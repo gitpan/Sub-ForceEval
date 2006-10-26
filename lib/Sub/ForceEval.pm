@@ -16,7 +16,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.2.0' );
+our $VERSION = qv( '0.2.1' );
 
 use Attribute::Handlers;
 
@@ -43,14 +43,15 @@ my $bless_exception
 {
     # bless $@ before re-throwing.
 
-    my $method = shift;
+    my ( $method ) = @_;
+
+    print STDERT "\nBreaking up method: '$method'\n";
 
     my ( $pack, $name )
     = $method =~ m{^ ( .+ ) :: ( \w+ ) $}x
-    or croak "Bogus Sub::ForceEval: no package and method in '$method'";
+    or die "Bogus Sub::ForceEval: no package and method in '$method'";
 
-    eval "require $pack"
-    or croak "Bogus Sub::ForceEval: unable to find package '$pack'";
+    print STDERT "\nFound: '$pack', '$name'\n";
 
     my $sub = $pack->can( $name )
     or croak "Bogus Sub::ForceEval: '$pack' cannot '$name'";
@@ -79,9 +80,11 @@ sub import
 
     $blesserz{ $caller } 
     = $method
-    ? $bless_exception->( $caller, $method )
+    ? $bless_exception->( $method )
     : $default_exception
     ;
+
+    0
 }
 
 ########################################################################
@@ -98,6 +101,8 @@ sub import
 sub UNIVERSAL::ForceEval :ATTR(CODE)
 {
   my ( undef, $install, $wrapped, undef, $method ) = @_;
+
+  print STDERR "\nWrapping with method: '$method'\n";
 
   my $pkg   = *{$install}{PACKAGE};
 
@@ -167,31 +172,29 @@ __END__
 
 =head1 NAME
 
-Sub::ForceEval - runtime cluck if a dying subrutine is not eval-ed.
+Sub::ForceEval - eval subroutines, re-throw exceptions
+if there is an eval; otherwise cluck and return undef.
 
 =head1 SYNOPSIS
   
-    # if you just want your death recorded:
+    # you may just want your death recorded...
+    #
+    # if foo dies in an eval then $@ will be re-thrown, 
+    # otherwise foo will cluck, return undef, and keep 
+    # going.
 
     use Sub::ForceEval;
-
-    # if any call to foo dies an eval will be added 
-    # at runtime if there isn't already one on the
-    # stack.
 
     sub foo :ForceEval
     {
        ...
     }
 
-
-    # a bare call to foo() in the main code will cluck
-    # about having no eval on the stack and get wrapped
-    # on the fly if anything in it dies.
+    # a bare call to foo() in the main code will cluck.
 
     foo();
 
-    # this works, however, since foo can find that
+    # the exception is re-thrown here, however, since
     # bletch was called from within an eval.
 
     eval { bletch() };
@@ -201,40 +204,32 @@ Sub::ForceEval - runtime cluck if a dying subrutine is not eval-ed.
     sub bar { foo() }
 
 
-    # or you may want an exceptional death.
+    # ... or you may want an exceptional death.
     #
-    # this can be helpful with higher-level code
-    # calls system service modules that have to 
-    # deal with non-exceptional die's internally.
-    # this way, anything that percolates above
-    # the service utilities will be a blessed
-    # exception.
+    # the default in MyClass is to have ForceEval 
+    # call My::Class::Default->constructor( $@ )
+    # before re-throwing, marine re-throws 
+    # Local::Fixup->handler( $@ ).
 
     package MyClass;
 
-    # use sets default constructor for any ForceEval in
-    # the class: if $@ is true then it will be blessed
-    # via $class->$method( $@ );
-
     use Sub::ForceEval qw( My::Class::Default::constructor );
 
-    # individual sub's can override the class default
-    # (e.g., different classes of exception handlers
-    # can deal with different types of errors).
-
-    sub marine :ForceEval( 'Override::Default::new' );
+    sub marine :ForceEval( 'Local::Fixup::handler' );
 
 
 =head1 DESCRIPTION
 
 Subroutines that are marked with the ForceEval attribute 
 check at runtime if there is an eval on the stack when
-the call dies. If there is an eval on the stack then the
-die is propagated to it via die $@; if not then cluck
-(see C<Carp>) is called and the die is trapped.
+the call dies. If an eval is found then the die is 
+propagated to it via die $@; if not then cluck (see 
+C<Carp>) is called and the die is trapped.
 
 The stack is only checked if something dies, so there
-is relatively little overhead in using the attribute.
+is relatively little overhead in using the attribute:
+just an eval and intermediate storage of the return
+values.
 
 Note that this inludes anything that dies for any reason
 even if the death is not intended as an OO 'exception'.
@@ -259,6 +254,9 @@ subroutine:
     use Sub::ForceEval;
 
     sub foo :ForceEval { ...}
+
+If foo dies within an eval then "die $@" is used
+to propagate the exception.
 
 =head2 Blessed exceptions (optional)
 

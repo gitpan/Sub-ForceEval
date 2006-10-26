@@ -1,15 +1,16 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         Sub-ForceEval
-version:      1.20
-version_from: 
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                Sub-ForceEval
+version:             1.21
+abstract:            eval subroutines, re-throw exceptions
+license:             ~
+generated_by:        ExtUtils::MakeMaker version 6.31
+distribution_type:   module
+requires:     
     Attribute::Handlers:           0.78
     Carp:                          0
     strict:                        0
     Symbol:                        0
     version:                       0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
+    version: 1.2
