@@ -10,15 +10,17 @@
 package Sub::ForceEval;
 
 use strict;
+no warnings 'redefine';
 
 use Carp qw( croak carp cluck );
 use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.2.1' );
+our $VERSION = qv( '0.3.0' );
 
 use Attribute::Handlers;
+
 
 ########################################################################
 # package variables
@@ -61,40 +63,13 @@ my $bless_exception
 };
 
 ########################################################################
-# public sub's
-########################################################################
+# this does the real meat of wrapping the original: coderef's and 
+# code are handled the same basic way.
 
-########################################################################
-# caller can specify a method to pre-process $@ before
-# rethrowing -- probably a constructor for OO-$@ handling.
+our $AUTOLOAD = '';
 
-sub import
-{
-    my $caller = caller;
-
-    my ( undef, $method ) = @_;
-
-    $blesserz{ $caller } 
-    = $method
-    ? $bless_exception->( $method )
-    : $default_exception
-    ;
-
-    0
-}
-
-########################################################################
-# wrap the attributed sub so that it checks the current stack for an
-# eval or dies.
-#
-# undef &$ref avoids redefinied sub warnings by wiping out the original
-# before installing the wrapper. with Symbol this allows warnings to
-# be left on throughout the code.
-#
-# Note: assigning *__ANON__ gives this anonymous sub if we 
-# have to report any errors.
-
-sub UNIVERSAL::ForceEval :ATTR(CODE)
+my $install_handler 
+= sub
 {
   my ( undef, $install, $wrapped, undef, $method ) = @_;
 
@@ -102,8 +77,17 @@ sub UNIVERSAL::ForceEval :ATTR(CODE)
 
   my $name  = join '::', $pkg, *{$install}{NAME};
 
+  print "Wrapping: $pkg $name\n";
+
   # use the caller's method if requested, otherwise
   # take the package's default (which may be $default_blesser).
+
+  if( *{$install}{ NAME } eq 'AUTOLOAD' )
+  {
+    my $pkg_autoload = qualify_to_ref 'AUTOLOAD', $pkg;
+
+    *{ $pkg_autoload } = \$AUTOLOAD;
+  }
 
   my $blesser
   = $method
@@ -111,11 +95,15 @@ sub UNIVERSAL::ForceEval :ATTR(CODE)
   : $blesserz{ $pkg }
   ;
 
-  no warnings 'redefine';
-
   *$install
   = sub
   {
+    $DB::single = 1;
+
+    no strict 'refs';
+
+    local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
+
     wantarray
     ? my @reply = eval { &$wrapped }
     : my $reply = eval { &$wrapped }
@@ -156,6 +144,50 @@ sub UNIVERSAL::ForceEval :ATTR(CODE)
       wantarray ? @reply : $reply
     }
   };
+};
+
+########################################################################
+# public sub's
+########################################################################
+
+########################################################################
+# caller can specify a method to pre-process $@ before
+# rethrowing -- probably a constructor for OO-$@ handling.
+
+sub import
+{
+    my $caller = caller;
+
+    my ( undef, $method ) = @_;
+
+    $blesserz{ $caller } 
+    = $method
+    ? $bless_exception->( $method )
+    : $default_exception
+    ;
+
+    0
+}
+
+########################################################################
+# wrap the attributed sub so that it checks the current stack for an
+# eval or dies.
+#
+# undef &$ref avoids redefinied sub warnings by wiping out the original
+# before installing the wrapper. with Symbol this allows warnings to
+# be left on throughout the code.
+#
+# Note: assigning *__ANON__ gives this anonymous sub if we 
+# have to report any errors.
+
+sub UNIVERSAL::ForceEval : ATTR(CODE)
+{
+  goto &$install_handler
+}
+
+sub UNIVERSAL::ForceEval : ATTR(SCALAR)
+{
+  goto &$install_handler
 }
 
 # keep require happy
@@ -209,7 +241,7 @@ if there is an eval; otherwise cluck and return undef.
 
     use Sub::ForceEval qw( My::Class::Default::constructor );
 
-    sub marine :ForceEval( 'Local::Fixup::handler' );
+    sub marine :ForceEval( 'Dive::Dive::Dive' );
 
 
 =head1 DESCRIPTION

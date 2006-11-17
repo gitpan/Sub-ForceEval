@@ -6,7 +6,7 @@ use Test::More tests => 2;
 use Sub::ForceEval;
 
 my @list = ( 'a' .. 'z' );
-my $item = 1;
+my $item = 2;
 
 sub foo :ForceEval { wantarray ? @list : $item }
 

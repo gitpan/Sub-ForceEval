@@ -1,3 +1,10 @@
+- Fri Nov 17 17:12:05 EST 2006
+
+Handle AUTOLOAD's. This requires exporting a single
+$AUTOLOAD from the wrapping package into the wrapped
+one so that $AUTOLOAD is available in the wrapper.
+see also t/30*.t.
+
 - Thu Oct 26 18:30:45 EDT 2006
 
 Add test for exception wrappers.
