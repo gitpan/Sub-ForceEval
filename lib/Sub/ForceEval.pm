@@ -235,13 +235,13 @@ if there is an eval; otherwise cluck and return undef.
     # the default in MyClass is to have ForceEval 
     # call My::Class::Default->constructor( $@ )
     # before re-throwing, marine re-throws 
-    # Local::Fixup->handler( $@ ).
+    # Dive::Dive->dive( $@ ).
 
     package MyClass;
 
     use Sub::ForceEval qw( My::Class::Default::constructor );
 
-    sub marine :ForceEval( 'Dive::Dive::Dive' );
+    sub marine :ForceEval( 'Dive::Dive::dive' );
 
 
 =head1 DESCRIPTION
@@ -317,6 +317,43 @@ that instead of any package default:
 leaves $class and $method for the subroutine set to 
 "Exceptional::File" and "handler".
 
+
+=back
+
+=head2 handling AUTOLOAD and friends.
+
+=over 4
+
+=item using "sub"
+
+Due to the handling by Attribute::Handlers, adding 
+ForceEval to AUTOLOAD, DESTROY, BEGIN, CHECK, or 
+INIT blocks requires that they have a 'sub' previx
+in the code.
+
+Working code:
+
+  sub AUTOLOAD  :ForceEval
+  {
+    ...
+  }
+
+This will fail without the "sub":
+
+  AUTOLOAD  :ForceEval
+  {
+    ...
+  }
+
+=item $AUTOLOAD
+
+The autoload in Sub::ForceEval is installed into
+the Eval'ed sub's package. This means that all
+AUTOLOADS that use ForceEval in the program will
+share a single $AUTOLOAD. This is not normally an
+issue since only one AUTOLOAD at a time is called
+and daisy-chaining them depends on their having a 
+common value anyway. 
 
 =back
 
