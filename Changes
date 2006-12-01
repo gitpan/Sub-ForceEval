@@ -1,3 +1,9 @@
+- Fri Dec  1 15:04:24 EST 2006
+
+Remove leftover $DB::single = 1;
+
+POD
+
 - Fri Nov 17 17:12:05 EST 2006
 
 Handle AUTOLOAD's. This requires exporting a single

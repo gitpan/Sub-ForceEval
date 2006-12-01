@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Sub-ForceEval
-version:             1.31
+version:             1.32
 abstract:            eval subroutines, re-throw exceptions
 license:             ~
 generated_by:        ExtUtils::MakeMaker version 6.31

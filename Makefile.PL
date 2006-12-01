@@ -4,7 +4,7 @@ WriteMakefile
 (
 
     NAME            => 'Sub::ForceEval',
-    VERSION         => '1.31',
+    VERSION         => '1.32',
     ABSTRACT_FROM   => 'lib/Sub/ForceEval.pm',
     PREREQ_PM =>
     {

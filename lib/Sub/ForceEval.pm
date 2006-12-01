@@ -17,7 +17,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.3.0' );
+our $VERSION = qv( '0.3.1' );
 
 use Attribute::Handlers;
 
@@ -98,8 +98,6 @@ my $install_handler
   *$install
   = sub
   {
-    $DB::single = 1;
-
     no strict 'refs';
 
     local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
@@ -326,10 +324,9 @@ leaves $class and $method for the subroutine set to
 
 =item using "sub"
 
-Due to the handling by Attribute::Handlers, adding 
-ForceEval to AUTOLOAD, DESTROY, BEGIN, CHECK, or 
-INIT blocks requires that they have a 'sub' previx
-in the code.
+Due to the internals of attributes, adding ForceEval to 
+AUTOLOAD, DESTROY, BEGIN, CHECK, or INIT blocks requires 
+that they have a 'sub' prefix in the code.
 
 Working code:
 
@@ -338,7 +335,7 @@ Working code:
     ...
   }
 
-This will fail without the "sub":
+This fails for lack of a "sub" before AUTOLOAD:
 
   AUTOLOAD  :ForceEval
   {

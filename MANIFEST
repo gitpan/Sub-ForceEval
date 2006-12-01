@@ -1,7 +1,9 @@
 t/00-depend.t
-t/10-in-eval.t
 t/01-module.t
+t/10-in-eval.t
 t/11-return-type.t
+t/20-exception.t
+t/30-autoload.t
 lib/Sub/ForceEval.pm
 Makefile.PL
 README
