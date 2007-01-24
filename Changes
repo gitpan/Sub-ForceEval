@@ -1,3 +1,8 @@
+- Wed Jan 24 17:05:56 EST 2007
+
+use "Class->method" or "Package::name" to allow non-OO
+calls for handling $@.
+
 - Fri Dec  1 15:04:24 EST 2006
 
 Remove leftover $DB::single = 1;

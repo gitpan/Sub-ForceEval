@@ -8,14 +8,14 @@ package main;
 
 use strict;
 
-use Sub::ForceEval  qw( Handle::Error::oops );
+use Sub::ForceEval  qw( Handle::Error->oops );
 
 use Test::More tests => 3;
 
 sub foo :ForceEval
 { die "foo" }
 
-sub bar :ForceEval('Handle::Error::baah')
+sub bar :ForceEval('Handle::Error->baah')
 { die "bar" }
 
 print STDERR "\nDie with eval:\n";

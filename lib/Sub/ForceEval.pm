@@ -17,14 +17,15 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.3.1' );
+our $VERSION = qv( '0.4.0' );
 
 use Attribute::Handlers;
-
 
 ########################################################################
 # package variables
 ########################################################################
+
+# default $@ handlers keyed by package name; updated in import.
 
 my %blesserz = ();
 
@@ -38,27 +39,44 @@ my %blesserz = ();
 # class compatable with the requested package and 
 # bless it if necesssary.
 
-my $default_exception = sub { $@ };
+my $default_handler = sub { @_ };
 
-my $bless_exception
+my $locate_handler
 = sub
 {
     # bless $@ before re-throwing.
 
-    my ( $method ) = @_;
+    my ( $handler ) = @_
+    or return $default_handler;
 
-    my ( $pack, $name )
-    = $method =~ m{^ ( .+ ) :: ( \w+ ) $}x
-    or die "Bogus Sub::ForceEval: no package and method in '$method'";
-
-    my $sub = $pack->can( $name )
-    or croak "Bogus Sub::ForceEval: '$pack' cannot '$name'";
-
-    sub
+    if( my ( $class, $method ) = $handler =~ m{ ^ ( .+ ) -> ( \w+ ) $ }x )
     {
-      ref $@ && $@->isa( $pack )
-      ? $@
-      : $pack->$sub( $@ )
+      my $sub = $class->can( $method )
+      or warn "Fatal: '$class' cannot '$method'";
+
+      $sub
+      ? sub
+        {
+          ref $@ && $@->isa( $class )
+          ? $@
+          : $sub->( $class, @_ )
+        }
+      : $default_handler
+    }
+    elsif( my ( $pack, $name ) = $method =~ m{ ^ ( .+ ) :: ( \w+ ) $ }x )
+    {
+      my $sub = $pack->can( $name )
+      or warn "Fatal: '$pack' cannot '$name'";
+
+      $sub
+      ? sub{ $sub->( @_ ) }
+      : $default_handler
+    }
+    else
+    {
+      warn "Fatal: No method or sub name in '$handler'";
+
+      $default_handler
     }
 };
 
@@ -91,7 +109,7 @@ my $install_handler
 
   my $blesser
   = $method
-  ? $bless_exception->( $method )
+  ? $locate_handler->( $method )
   : $blesserz{ $pkg }
   ;
 
@@ -102,9 +120,10 @@ my $install_handler
 
     local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
 
-    wantarray
-    ? my @reply = eval { &$wrapped }
-    : my $reply = eval { &$wrapped }
+    my $reply
+    = wantarray
+    ? [ eval { &$wrapped } ]
+    :   eval { &$wrapped }
     ;
 
     if( $@ )
@@ -139,7 +158,7 @@ my $install_handler
     {
       # no exception: just hand back the data;
 
-      wantarray ? @reply : $reply
+      wantarray ? @$reply : $reply
     }
   };
 };
@@ -156,13 +175,11 @@ sub import
 {
     my $caller = caller;
 
-    my ( undef, $method ) = @_;
+    # discard this class
 
-    $blesserz{ $caller } 
-    = $method
-    ? $bless_exception->( $method )
-    : $default_exception
-    ;
+    shift;
+
+    $blesserz{ $caller } = $locate_handler->( @_ );
 
     0
 }
@@ -237,9 +254,16 @@ if there is an eval; otherwise cluck and return undef.
 
     package MyClass;
 
-    use Sub::ForceEval qw( My::Class::Default::constructor );
+    use Sub::ForceEval qw( My::Class::Default->constructor );
 
-    sub marine :ForceEval( 'Dive::Dive::dive' );
+    sub marine :ForceEval( 'Dive::Dive->dive' );
+
+    # then again, you may just want to record or
+    # tidy up the message. in this case, you can pass
+    # in a function without the '->' separator and 
+    # it'll be callsed as function( $@ ).
+
+    use Sub::ForceEval qw( Some::Package::function );
 
 
 =head1 DESCRIPTION
@@ -291,7 +315,10 @@ to propagate the exception.
 Passing a constructor to "use" will wrap all $@ via
 the constructor for subroutines in that package:
 
-    use Sub::ForceEval qw( Exceptional::Class::construct );
+    use Sub::ForceEval qw( Exceptional::Class->construct );
+
+The literal '->' is text, it does not mean that the
+constructor needs to return a subref.
 
 This will be broken into $class of Exceptional::Class
 and method of "construct", which are then called as:
@@ -315,8 +342,22 @@ that instead of any package default:
 leaves $class and $method for the subroutine set to 
 "Exceptional::File" and "handler".
 
-
 =back
+
+=head2 Filtered exceptions
+
+If all you want to do is log or munge the errors, 
+then a simple subroutine may do just as well. These
+are used via:
+
+  use Sub::ForceEval qw( My::function );
+
+or
+
+  sub foo :ForceEval qw( Some::Package::munge_error )
+  {
+    ...
+  }
 
 =head2 handling AUTOLOAD and friends.
 
@@ -324,9 +365,10 @@ leaves $class and $method for the subroutine set to
 
 =item using "sub"
 
-Due to the internals of attributes, adding ForceEval to 
-AUTOLOAD, DESTROY, BEGIN, CHECK, or INIT blocks requires 
-that they have a 'sub' prefix in the code.
+Due to the handling by Attribute::Handlers, adding 
+ForceEval to AUTOLOAD, DESTROY, BEGIN, CHECK, or 
+INIT blocks requires that they have a 'sub' prefix
+in the code.
 
 Working code:
 
@@ -335,7 +377,7 @@ Working code:
     ...
   }
 
-This fails for lack of a "sub" before AUTOLOAD:
+This will fail without the "sub":
 
   AUTOLOAD  :ForceEval
   {
@@ -364,6 +406,17 @@ An C<:ForceEval> subroutine was called from a context
 where exceptions would not be caught by any surrounding 
 C<eval>. This uses Carp::cluck to complain about the fact
 and keeps going.
+
+=item "Fatal: '<package>' cannot '<name>'
+
+Breaking up the handler argument on '->' or the final '::' 
+gives a package and name. These are checked via 
+
+  $package->can( $name )
+
+prior to dispatch. If the named package does not have
+the name in it (or one of its base classes in OO) then
+Sub::ForceEval logs the warning and returns undef.
 
 =back
 
