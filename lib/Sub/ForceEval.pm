@@ -17,7 +17,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.4.0' );
+our $VERSION = qv( '0.4.1' );
 
 use Attribute::Handlers;
 
@@ -41,40 +41,53 @@ my %blesserz = ();
 
 my $default_handler = sub { @_ };
 
-my $locate_handler
+my $generate_handler
 = sub
 {
-    # bless $@ before re-throwing.
+    # 
+
+    # generate handlers to bless $@.
 
     my ( $handler ) = @_
     or return $default_handler;
 
     if( my ( $class, $method ) = $handler =~ m{ ^ ( .+ ) -> ( \w+ ) $ }x )
     {
-      my $sub = $class->can( $method )
-      or warn "Fatal: '$class' cannot '$method'";
-
-      $sub
-      ? sub
+      sub
+      {
+        if( my $sub = $class->can( $method ) )
         {
-          ref $@ && $@->isa( $class )
-          ? $@
-          : $sub->( $class, @_ )
-        }
-      : $default_handler
-    }
-    elsif( my ( $pack, $name ) = $method =~ m{ ^ ( .+ ) :: ( \w+ ) $ }x )
-    {
-      my $sub = $pack->can( $name )
-      or warn "Fatal: '$pack' cannot '$name'";
+          unshift @_, $class;
 
-      $sub
-      ? sub{ $sub->( @_ ) }
-      : $default_handler
+          goto &$sub
+        }
+        else
+        {
+          warn "Warning: Class '$class' cannot '$method'";
+
+          goto &$default_handler
+        }
+      }
+    }
+    elsif( my ( $pack, $name ) = $handler =~ m{ ^ ( .+ ) :: ( \w+ ) $ }x )
+    {
+      sub
+      {
+        if( my $sub = $pack->can( $name ) )
+        {
+          goto &$sub
+        }
+        else
+        {
+          warn "Warning: Package '$pack' cannot '$name'";
+
+          goto &$default_handler
+        }
+      }
     }
     else
     {
-      warn "Fatal: No method or sub name in '$handler'";
+      warn "Warning: No method or sub name in '$handler'";
 
       $default_handler
     }
@@ -89,7 +102,7 @@ our $AUTOLOAD = '';
 my $install_handler 
 = sub
 {
-  my ( undef, $install, $wrapped, undef, $method ) = @_;
+  my ( undef, $install, $wrapped, undef, $handler ) = @_;
 
   my $pkg   = *{$install}{PACKAGE};
 
@@ -108,8 +121,8 @@ my $install_handler
   }
 
   my $blesser
-  = $method
-  ? $locate_handler->( $method )
+  = $handler
+  ? $generate_handler->( $handler )
   : $blesserz{ $pkg }
   ;
 
@@ -179,7 +192,7 @@ sub import
 
     shift;
 
-    $blesserz{ $caller } = $locate_handler->( @_ );
+    $blesserz{ $caller } = $generate_handler->( @_ );
 
     0
 }
@@ -308,6 +321,10 @@ to propagate the exception.
 
 =head2 Blessed exceptions (optional)
 
+Each package that uses ForceEval can have its own
+setting. There is currently no way to set a global
+default.
+
 =over 4
 
 =item Package default exception
@@ -325,16 +342,15 @@ and method of "construct", which are then called as:
     
     die $class->$method( $@ );
 
-This is a per-package setting (i.e., using it in one 
-package does not affect other packages to use it with
-ForceEval).
+so that whatever they return will be passed as the
+exception.
 
 =item Subroutine-specific exception
 
 Passing a constructor to the ForceEval attribute will use
 that instead of any package default:
 
-    sub frobnicate :ForceEval qw( Exceptional::File::handler )
+    sub frobnicate :ForceEval qw( Exceptional::File->handler )
     {
         ...
     }
@@ -359,7 +375,11 @@ or
     ...
   }
 
-=head2 handling AUTOLOAD and friends.
+Functions are checked via $package->can( $name ),
+defaulting to a stub that passes back $@ as-is
+with a warning that "$package cannot $name".
+
+=head2 wrapping AUTOLOAD and friends.
 
 =over 4
 
@@ -377,7 +397,7 @@ Working code:
     ...
   }
 
-This will fail without the "sub":
+This will fail since it lacks the "sub":
 
   AUTOLOAD  :ForceEval
   {
@@ -407,16 +427,18 @@ where exceptions would not be caught by any surrounding
 C<eval>. This uses Carp::cluck to complain about the fact
 and keeps going.
 
-=item "Fatal: '<package>' cannot '<name>'
+=item "Warning: 'Package <package>' cannot '<name>'
+
+=item "Warning: 'Class <package>' cannot '<name>'
 
 Breaking up the handler argument on '->' or the final '::' 
 gives a package and name. These are checked via 
 
   $package->can( $name )
 
-prior to dispatch. If the named package does not have
-the name in it (or one of its base classes in OO) then
-Sub::ForceEval logs the warning and returns undef.
+at runtime, prior to dispatch. If the given package does 
+not have the name in it (or one of its base classes in OO) 
+then Sub::ForceEval logs the warning and returns $@ as-is.
 
 =back
 

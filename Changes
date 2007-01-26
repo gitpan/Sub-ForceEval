@@ -1,3 +1,10 @@
+- Thu Jan 25 13:36:53 EST 2007
+
+POD
+
+Push 'can' check for handler to runtime to avoid 
+extraneous warnings due to module loading order.
+
 - Wed Jan 24 17:05:56 EST 2007
 
 use "Class->method" or "Package::name" to allow non-OO
