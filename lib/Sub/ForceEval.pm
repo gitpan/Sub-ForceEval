@@ -17,7 +17,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.4.1' );
+our $VERSION = qv( '0.4.2' );
 
 use Attribute::Handlers;
 
@@ -107,8 +107,6 @@ my $install_handler
   my $pkg   = *{$install}{PACKAGE};
 
   my $name  = join '::', $pkg, *{$install}{NAME};
-
-  print "Wrapping: $pkg $name\n";
 
   # use the caller's method if requested, otherwise
   # take the package's default (which may be $default_blesser).
