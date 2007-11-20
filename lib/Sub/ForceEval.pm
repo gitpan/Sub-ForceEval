@@ -17,7 +17,7 @@ use Symbol;
 
 use version;
 
-our $VERSION = qv( '0.4.2' );
+our $VERSION = qv( '0.4.3' );
 
 use Attribute::Handlers;
 
@@ -44,8 +44,6 @@ my $default_handler = sub { @_ };
 my $generate_handler
 = sub
 {
-    # 
-
     # generate handlers to bless $@.
 
     my ( $handler ) = @_
@@ -111,6 +109,9 @@ my $install_handler
   # use the caller's method if requested, otherwise
   # take the package's default (which may be $default_blesser).
 
+  # make sure that the caller's AUTOLOAD scalar
+  # is avaiable here when the time comes.
+
   if( *{$install}{ NAME } eq 'AUTOLOAD' )
   {
     my $pkg_autoload = qualify_to_ref 'AUTOLOAD', $pkg;
@@ -131,11 +132,23 @@ my $install_handler
 
     local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
 
-    my $reply
-    = wantarray
-    ? [ eval { &$wrapped } ]
-    :   eval { &$wrapped }
-    ;
+    my $reply   = '';
+
+    # make sure the wrapped sub sees the same
+    # context: void, scalar, or array.
+
+    if( wantarray )
+    {
+        $reply  = [ eval { &$wrapped } ]
+    }
+    elsif( defined wantarray )
+    {
+        $reply  =   eval { &$wrapped }
+    }
+    else
+    {
+        eval { &$wrapped }
+    }
 
     if( $@ )
     {
@@ -143,11 +156,14 @@ my $install_handler
 
         while( my $caller = ( caller ++$i )[ 3 ] )
         {
-            # re-throw the error if someone is out 
-            # there to get it.
+            # re-throw the error if someone is 
+            # out there to get it (i.e., if the 
+            # caller string at that level 
+            # begings with 'eval').
+
+            next if index $caller, '(eval';
 
             die $blesser->( $@ )
-            if $caller =~ m{ ^ \(eval\b }x;
         }
 
         # ran out of stack: cluck about it, with a legit
@@ -168,6 +184,8 @@ my $install_handler
     else
     {
       # no exception: just hand back the data;
+
+      return unless defined wantarray;
 
       wantarray ? @$reply : $reply
     }
