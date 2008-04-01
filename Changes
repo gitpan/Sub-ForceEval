@@ -1,3 +1,16 @@
+- Tue Apr  1 13:31:28 EDT 2008
+
+Fix bug in t/20-exception.t. 
+
+Now correctly handles 
+
+    sub bar :ForceEval(Handle::Error->baah)
+
+which will dispatch $? via the specified method.
+
+Add use 5.006 to Makefile.PL to avoid
+5.005 test failures.
+
 - Tue Nov 20 16:44:17 EST 2007
 
 Handle void context explicitly in calling

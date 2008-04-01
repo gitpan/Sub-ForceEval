@@ -10,14 +10,13 @@
 package Sub::ForceEval;
 
 use strict;
-no warnings 'redefine';
+use version;
 
 use Carp qw( croak carp cluck );
 use Symbol;
+use Data::Dumper;
 
-use version;
-
-our $VERSION = qv( '0.4.3' );
+our $VERSION = qv( '0.4.4' );
 
 use Attribute::Handlers;
 
@@ -48,6 +47,9 @@ my $generate_handler
 
     my ( $handler ) = @_
     or return $default_handler;
+
+    $handler    =~ s{ ^ \s+  }{}x;
+    $handler    =~ s{   \s+ $}{}x;
 
     if( my ( $class, $method ) = $handler =~ m{ ^ ( .+ ) -> ( \w+ ) $ }x )
     {
@@ -85,7 +87,7 @@ my $generate_handler
     }
     else
     {
-      warn "Warning: No method or sub name in '$handler'";
+      cluck "Warning: No method or sub name in '$handler'";
 
       $default_handler
     }
@@ -100,96 +102,105 @@ our $AUTOLOAD = '';
 my $install_handler 
 = sub
 {
-  my ( undef, $install, $wrapped, undef, $handler ) = @_;
+    my ( undef, $install, $wrapped, undef, $handler ) = @_;
 
-  my $pkg   = *{$install}{PACKAGE};
+    my $pkg   = *{$install}{PACKAGE};
 
-  my $name  = join '::', $pkg, *{$install}{NAME};
+    my $name  = join '::', $pkg, *{$install}{NAME};
 
-  # use the caller's method if requested, otherwise
-  # take the package's default (which may be $default_blesser).
+    # use the caller's method if requested, otherwise
+    # take the package's default (which may be $default_blesser).
 
-  # make sure that the caller's AUTOLOAD scalar
-  # is avaiable here when the time comes.
+    # make sure that the caller's AUTOLOAD scalar
+    # is avaiable here when the time comes.
 
-  if( *{$install}{ NAME } eq 'AUTOLOAD' )
-  {
-    my $pkg_autoload = qualify_to_ref 'AUTOLOAD', $pkg;
-
-    *{ $pkg_autoload } = \$AUTOLOAD;
-  }
-
-  my $blesser
-  = $handler
-  ? $generate_handler->( $handler )
-  : $blesserz{ $pkg }
-  ;
-
-  *$install
-  = sub
-  {
-    no strict 'refs';
-
-    local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
-
-    my $reply   = '';
-
-    # make sure the wrapped sub sees the same
-    # context: void, scalar, or array.
-
-    if( wantarray )
+    if( *{$install}{ NAME } eq 'AUTOLOAD' )
     {
-        $reply  = [ eval { &$wrapped } ]
-    }
-    elsif( defined wantarray )
-    {
-        $reply  =   eval { &$wrapped }
-    }
-    else
-    {
-        eval { &$wrapped }
+        my $pkg_autoload = qualify_to_ref 'AUTOLOAD', $pkg;
+
+        *{ $pkg_autoload } = \$AUTOLOAD;
     }
 
-    if( $@ )
-    {
-        my $i = -1;
+    # passed an arrayref in the $handler, expand it.
 
-        while( my $caller = ( caller ++$i )[ 3 ] )
+    $handler = $handler->[0]
+    while ref $handler;
+
+    my $blesser
+    = $handler
+    ? $generate_handler->( $handler )
+    : $blesserz{ $pkg }
+    ;
+
+    *$install
+    = sub
+    {
+        no strict 'refs';
+
+        # can't use Symbol for this due to local
+        # issues -- or at least I can't see how
+        # to dodge the no strict refs here.
+
+        local *{ $pkg . 'AUTOLOAD' } = \$AUTOLOAD;
+
+        my $reply   = '';
+
+        # make sure the wrapped sub sees the same
+        # context: void, scalar, or array.
+
+        if( wantarray )
         {
-            # re-throw the error if someone is 
-            # out there to get it (i.e., if the 
-            # caller string at that level 
-            # begings with 'eval').
-
-            next if index $caller, '(eval';
-
-            die $blesser->( $@ )
+            $reply  = [ eval { &$wrapped } ]
+        }
+        elsif( defined wantarray )
+        {
+            $reply  =   eval { &$wrapped }
+        }
+        else
+        {
+            eval { &$wrapped }
         }
 
-        # ran out of stack: cluck about it, with a legit
-        # name as the source.
+        if( $@ )
+        {
+            my $i = -1;
 
-        local *__ANON__ = $name;
+            while( my $caller = ( caller ++$i )[ 3 ] )
+            {
+                # re-throw the error if someone is 
+                # out there to get it (i.e., if the 
+                # caller string at that level 
+                # begings with 'eval').
 
-        my $exception
-        = ref $@                       ? 'exception object'
-        : $@ =~ m{(.*) at \S+ line .*} ? "'$1'"
-        :                                "'$@'"
-        ;
+                next if index $caller, '(eval';
 
-        cluck "Missing eval for '$name' (died with: $exception) caught";
+                die $blesser->( $@ )
+            }
 
-        return
-    }
-    else
-    {
-      # no exception: just hand back the data;
+            # ran out of stack: cluck about it, with a legit
+            # name as the source.
 
-      return unless defined wantarray;
+            local *__ANON__ = $name;
 
-      wantarray ? @$reply : $reply
-    }
-  };
+            my $exception
+            = ref $@                       ? 'exception object'
+            : $@ =~ m{(.*) at \S+ line .*} ? "'$1'"
+            :                                "'$@'"
+            ;
+
+            cluck "Missing eval for '$name' (died with: $exception) caught";
+
+            return
+        }
+        else
+        {
+            # no exception: just hand back the data;
+
+            return unless defined wantarray;
+
+            wantarray ? @$reply : $reply
+        }
+    };
 };
 
 ########################################################################
@@ -224,14 +235,18 @@ sub import
 # Note: assigning *__ANON__ gives this anonymous sub if we 
 # have to report any errors.
 
-sub UNIVERSAL::ForceEval : ATTR(CODE)
 {
-  goto &$install_handler
-}
+    no warnings 'redefine';
 
-sub UNIVERSAL::ForceEval : ATTR(SCALAR)
-{
-  goto &$install_handler
+    sub UNIVERSAL::ForceEval : ATTR(RAWDATA,CODE)
+    {
+      goto &$install_handler
+    }
+
+    sub UNIVERSAL::ForceEval : ATTR(RAWDATA,SCALAR)
+    {
+      goto &$install_handler
+    }
 }
 
 # keep require happy
